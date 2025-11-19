@@ -77,26 +77,61 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
     let mut text_lines = Vec::new();
-    
-    for m in &app.messages {
+
+    // Clone messages to avoid borrow checker issues
+    let messages = app.messages.clone();
+    let show_line_numbers = app.show_line_numbers;
+    let auto_scroll = app.auto_scroll;
+
+    for m in &messages {
         let (role_style, icon) = match m.role {
-            Role::User => (Style::default().fg(BLUE), ""),
-            Role::Assistant => (Style::default().fg(GREEN), ""),
-            Role::System => (Style::default().fg(YELLOW), ""),
+            Role::User => (Style::default().fg(BLUE), ""),
+            Role::Assistant => (Style::default().fg(GREEN), ""),
+            Role::System => (Style::default().fg(YELLOW), ""),
         };
 
         let header = Line::from(vec![
             Span::styled(format!("{} ", icon), role_style),
             Span::styled(format!("{:?}", m.role).to_uppercase(), role_style.add_modifier(Modifier::BOLD)),
         ]);
-        
+
         text_lines.push(header);
         text_lines.extend(parse_markdown(&m.content));
         text_lines.push(Line::from("")); // Spacer
     }
 
-    let paragraph = Paragraph::new(text_lines)
-        .block(Block::default().borders(Borders::NONE).style(Style::default().bg(BG_HARD)))
+    // Add line numbers if enabled
+    let display_lines: Vec<Line> = if show_line_numbers {
+        let line_num_width = text_lines.len().to_string().len().max(3);
+        text_lines.into_iter().enumerate().map(|(idx, line)| {
+            let line_num = format!("{:>width$} ", idx + 1, width = line_num_width);
+            let mut spans = vec![Span::styled(line_num, Style::default().fg(GRAY))];
+            spans.extend(line.spans);
+            Line::from(spans)
+        }).collect()
+    } else {
+        text_lines
+    };
+
+    let total_lines = display_lines.len();
+
+    // Update viewport info
+    app.update_viewport(area.height, total_lines);
+
+    // Auto-scroll indicator
+    let scroll_indicator = if auto_scroll {
+        format!(" [AUTO] ")
+    } else {
+        format!(" {}/{} ", app.scroll + 1, total_lines)
+    };
+
+    let block = Block::default()
+        .borders(Borders::NONE)
+        .style(Style::default().bg(BG_HARD))
+        .title_bottom(Line::from(Span::styled(scroll_indicator, Style::default().fg(GRAY))));
+
+    let paragraph = Paragraph::new(display_lines)
+        .block(block)
         .style(Style::default().bg(BG_HARD))
         .wrap(Wrap { trim: true })
         .scroll((app.scroll, 0));
@@ -175,28 +210,50 @@ fn parse_markdown(content: &str) -> Vec<Line<'_>> {
 }
 
 fn draw_input(f: &mut Frame, app: &App, area: Rect) {
-    let border_color = if let InputMode::Editing = app.input_mode {
-        AQUA
-    } else {
-        GRAY
+    let (border_color, title, text, cursor_offset) = match app.input_mode {
+        InputMode::Editing => (
+            AQUA,
+            " Input ",
+            app.input.as_str(),
+            app.input.len() as u16 + 1,
+        ),
+        InputMode::Command => (
+            PURPLE,
+            " Command ",
+            app.command_input.as_str(),
+            app.command_input.len() as u16 + 1,
+        ),
+        InputMode::Normal => (
+            GRAY,
+            " Input ",
+            app.input.as_str(),
+            0,
+        ),
     };
 
     let input_block = Block::default()
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(Style::default().fg(border_color))
-        .title(Span::styled(" Input ", Style::default().fg(border_color)));
+        .title(Span::styled(title, Style::default().fg(border_color)));
 
-    let input_text = Paragraph::new(app.input.as_str())
+    let display_text = if matches!(app.input_mode, InputMode::Command) {
+        format!(":{}", text)
+    } else {
+        text.to_string()
+    };
+
+    let input_text = Paragraph::new(display_text)
         .style(Style::default().fg(FG).bg(BG_HARD))
         .block(input_block)
         .wrap(Wrap { trim: false });
 
     f.render_widget(input_text, area);
 
-    if let InputMode::Editing = app.input_mode {
+    if matches!(app.input_mode, InputMode::Editing | InputMode::Command) {
+        let extra_offset = if matches!(app.input_mode, InputMode::Command) { 1 } else { 0 };
         f.set_cursor_position((
-            area.x + app.input.len() as u16 + 1,
+            area.x + cursor_offset + extra_offset,
             area.y + 1,
         ));
     }
@@ -210,7 +267,7 @@ fn draw_shortcuts(f: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(12), // Height of the shortcuts menu
+            Constraint::Length(15), // Height of the shortcuts menu
         ])
         .split(f.area())[1];
 
@@ -234,6 +291,18 @@ fn draw_shortcuts(f: &mut Frame) {
             Cell::from("Enter Input Mode"),
         ]),
         Row::new(vec![
+            Cell::from(Span::styled(":", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Command Mode (:42, :top, :bottom, :auto)"),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("j/k", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Scroll Down/Up | Ctrl+d/u: Page Down/Up"),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("G", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Jump to Bottom | gg: Jump to Top"),
+        ]),
+        Row::new(vec![
             Cell::from(Span::styled("n", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
             Cell::from("New Chat"),
         ]),
@@ -246,12 +315,12 @@ fn draw_shortcuts(f: &mut Frame) {
             Cell::from("Clear Current Chat"),
         ]),
         Row::new(vec![
-            Cell::from(Span::styled("q", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
-            Cell::from("Quit"),
-        ]),
-        Row::new(vec![
             Cell::from(Span::styled("b", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
             Cell::from("Backend Selection"),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("q", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Quit"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("Esc", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),

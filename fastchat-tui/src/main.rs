@@ -78,6 +78,14 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Backspace => app.delete_char(),
                         _ => {}
                     }
+                } else if app.is_command_mode() {
+                    match key.code {
+                        KeyCode::Enter => app.execute_command(),
+                        KeyCode::Esc => app.set_normal_mode(),
+                        KeyCode::Char(c) => app.enter_command_char(c),
+                        KeyCode::Backspace => app.delete_command_char(),
+                        _ => {}
+                    }
                 } else if app.show_backend_selection {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('b') => app.toggle_backend_selection(),
@@ -146,8 +154,17 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('i') => app.set_input_mode(),
+                        KeyCode::Char(':') => app.set_command_mode(),
                         KeyCode::Char('j') => app.scroll_down(),
                         KeyCode::Char('k') => app.scroll_up(),
+                        KeyCode::Char('d') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => app.scroll_page_down(),
+                        KeyCode::Char('u') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => app.scroll_page_up(),
+                        KeyCode::Char('G') => app.scroll_to_bottom(),
+                        KeyCode::Char('g') if app.pending_leader_key => {
+                            app.pending_leader_key = false;
+                            app.scroll = 0;
+                            app.auto_scroll = false;
+                        }
                         KeyCode::Char('n') => app.new_chat(),
                         KeyCode::Char(' ') if key.modifiers.is_empty() => {
                             if app.pending_leader_key {
@@ -164,6 +181,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Char('s') => app.toggle_stats(),
                         KeyCode::Char('c') => app.clear_history(),
                         KeyCode::Char('b') => app.toggle_backend_selection(),
+                        KeyCode::Char('g') if key.modifiers.is_empty() => {
+                            app.pending_leader_key = true;
+                        }
                         _ => {
                             if app.pending_leader_key {
                                 app.pending_leader_key = false;
