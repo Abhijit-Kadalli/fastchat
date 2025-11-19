@@ -1,4 +1,5 @@
-use crate::app::{App, InputMode, Role};
+use crate::app::{App, InputMode};
+use crate::types::Role;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -50,6 +51,10 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     if app.show_url_edit {
         draw_url_input(f, app);
+    }
+
+    if app.show_history {
+        draw_history_panel(f, app);
     }
 }
 
@@ -205,7 +210,7 @@ fn draw_shortcuts(f: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(10), // Height of the shortcuts menu
+            Constraint::Length(11), // Height of the shortcuts menu
         ])
         .split(f.area())[1];
 
@@ -219,6 +224,10 @@ fn draw_shortcuts(f: &mut Frame) {
         Row::new(vec![
             Cell::from(Span::styled("Space", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
             Cell::from("Toggle this menu"),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("Space+e", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Toggle Chat History"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("i", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
@@ -372,6 +381,87 @@ fn draw_url_input(f: &mut Frame, app: &App) {
     
     f.set_cursor_position((
         input_area.x + app.url_input.len() as u16,
-        input_area.y + 2, 
+        input_area.y + 2,
     ));
+}
+
+fn draw_history_panel(f: &mut Frame, app: &App) {
+    // Create a left-side panel, similar to LazyVim's file explorer
+    let area = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(30), // History panel takes 30% of width
+            Constraint::Percentage(70), // Rest for main content
+        ])
+        .split(f.area())[0];
+
+    let block = Block::default()
+        .title(" Chat History (Space+e to close) ")
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(PURPLE))
+        .style(Style::default().bg(BG_MEDIUM).fg(FG));
+
+    if app.history.is_empty() {
+        let empty_text = Paragraph::new("No chat history yet.\nStart a new conversation!")
+            .block(block)
+            .style(Style::default().fg(GRAY))
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(ratatui::widgets::Clear, area);
+        f.render_widget(empty_text, area);
+        return;
+    }
+
+    let mut items = Vec::new();
+    for (i, session) in app.history.iter().enumerate() {
+        let is_selected = i == app.selected_chat_index;
+
+        // Format timestamp
+        let timestamp = session.created_at.format("%m/%d %H:%M").to_string();
+
+        // Get session name (truncate if too long)
+        let name = if session.name.len() > 35 {
+            format!("{}...", &session.name[..32])
+        } else {
+            session.name.clone()
+        };
+
+        // Message count
+        let msg_count = session.messages.len();
+
+        if is_selected {
+            items.push(Line::from(vec![
+                Span::styled("▶ ", Style::default().fg(AQUA).add_modifier(Modifier::BOLD)),
+                Span::styled(name.clone(), Style::default().fg(BG_HARD).bg(AQUA).add_modifier(Modifier::BOLD)),
+            ]));
+            items.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(format!("  {} msgs  {}", msg_count, timestamp),
+                    Style::default().fg(GRAY)),
+            ]));
+        } else {
+            items.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(name.clone(), Style::default().fg(FG)),
+            ]));
+            items.push(Line::from(vec![
+                Span::styled("  ", Style::default()),
+                Span::styled(format!("  {} msgs  {}", msg_count, timestamp),
+                    Style::default().fg(GRAY)),
+            ]));
+        }
+
+        // Add a blank line between items
+        if i < app.history.len() - 1 {
+            items.push(Line::from(""));
+        }
+    }
+
+    let paragraph = Paragraph::new(items)
+        .block(block)
+        .alignment(ratatui::layout::Alignment::Left)
+        .wrap(Wrap { trim: false });
+
+    f.render_widget(ratatui::widgets::Clear, area);
+    f.render_widget(paragraph, area);
 }

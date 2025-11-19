@@ -1,6 +1,5 @@
 use crate::config::AppConfig;
 use crate::api::{send_message_stream, ApiEvent};
-use crate::api::{send_message_stream, ApiEvent};
 use crate::types::{Message, Role, ChatSession};
 use crate::storage;
 use tokio::sync::mpsc;
@@ -35,9 +34,11 @@ pub struct App {
     pub rx: mpsc::Receiver<ApiEvent>,
     pub tx: mpsc::Sender<ApiEvent>,
     pub current_task: Option<tokio::task::JoinHandle<()>>,
+    pub pending_leader_key: bool,
 }
 
 impl App {
+    pub fn new() -> App {
         let (tx, rx) = mpsc::channel(100);
         let history = storage::load_chats().unwrap_or_default();
         App {
@@ -73,6 +74,7 @@ impl App {
             rx,
             tx,
             current_task: None,
+            pending_leader_key: false,
         }
     }
 
@@ -345,5 +347,4 @@ impl App {
             self.selected_chat_index += 1;
         }
     }
-}
 }
