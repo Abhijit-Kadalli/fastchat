@@ -135,6 +135,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Char('j') | KeyCode::Down => app.history_down(),
                         KeyCode::Char('k') | KeyCode::Up => app.history_up(),
                         KeyCode::Enter => app.load_selected_chat(),
+                        KeyCode::Char('n') => app.new_chat(),
+                        KeyCode::Char('d') => app.delete_selected_chat(),
+                        KeyCode::Char('r') => app.reload_history(),
                         _ => {
                             app.pending_leader_key = false;
                         }
@@ -145,6 +148,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Char('i') => app.set_input_mode(),
                         KeyCode::Char('j') => app.scroll_down(),
                         KeyCode::Char('k') => app.scroll_up(),
+                        KeyCode::Char('n') => app.new_chat(),
                         KeyCode::Char(' ') if key.modifiers.is_empty() => {
                             if app.pending_leader_key {
                                 app.pending_leader_key = false;

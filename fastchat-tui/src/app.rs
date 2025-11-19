@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 pub enum InputMode {
     Normal,
     Editing,
+    Command,
 }
 
 pub struct App {
@@ -35,6 +36,11 @@ pub struct App {
     pub tx: mpsc::Sender<ApiEvent>,
     pub current_task: Option<tokio::task::JoinHandle<()>>,
     pub pending_leader_key: bool,
+    pub command_input: String,
+    pub show_line_numbers: bool,
+    pub auto_scroll: bool,
+    pub total_lines: usize,
+    pub viewport_height: u16,
 }
 
 impl App {
@@ -75,6 +81,11 @@ impl App {
             tx,
             current_task: None,
             pending_leader_key: false,
+            command_input: String::new(),
+            show_line_numbers: true,
+            auto_scroll: true,
+            total_lines: 0,
+            viewport_height: 0,
         }
     }
 
@@ -89,13 +100,8 @@ impl App {
     pub fn toggle_history(&mut self) {
         self.show_history = !self.show_history;
         if self.show_history {
-            // Reload history when opening
-            // In a real app we might want to do this async or cache it
-            // For now we'll assume it's loaded or we load it here
-            // But we can't call async functions easily here without &mut self lifetime issues if we are not careful
-            // So we will rely on the main loop or a separate loader.
-            // For now, let's just reset selection
-            self.selected_chat_index = 0;
+            // Reload history from disk when opening
+            self.reload_history();
             self.history_scroll = 0;
         }
     }
@@ -142,11 +148,13 @@ impl App {
     pub fn scroll_up(&mut self) {
         if self.scroll > 0 {
             self.scroll -= 1;
+            self.auto_scroll = false;
         }
     }
 
     pub fn scroll_down(&mut self) {
         self.scroll += 1;
+        self.auto_scroll = false;
     }
 
     pub async fn submit_message(&mut self) {
@@ -210,6 +218,78 @@ impl App {
     
     pub fn is_input_mode(&self) -> bool {
         matches!(self.input_mode, InputMode::Editing)
+    }
+
+    pub fn is_command_mode(&self) -> bool {
+        matches!(self.input_mode, InputMode::Command)
+    }
+
+    pub fn set_command_mode(&mut self) {
+        self.input_mode = InputMode::Command;
+        self.command_input.clear();
+    }
+
+    pub fn enter_command_char(&mut self, c: char) {
+        self.command_input.push(c);
+    }
+
+    pub fn delete_command_char(&mut self) {
+        self.command_input.pop();
+    }
+
+    pub fn execute_command(&mut self) {
+        let cmd = self.command_input.trim();
+
+        // Check if it's a line number command
+        if let Ok(line_num) = cmd.parse::<u16>() {
+            // Jump to line number
+            self.scroll = line_num.saturating_sub(1);
+            self.auto_scroll = false;
+        } else if cmd == "top" || cmd == "gg" {
+            self.scroll = 0;
+            self.auto_scroll = false;
+        } else if cmd == "bottom" || cmd == "G" {
+            self.scroll_to_bottom();
+        } else if cmd == "auto" {
+            self.auto_scroll = !self.auto_scroll;
+            if self.auto_scroll {
+                self.scroll_to_bottom();
+            }
+        }
+
+        self.command_input.clear();
+        self.input_mode = InputMode::Normal;
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        if self.total_lines > self.viewport_height as usize {
+            self.scroll = (self.total_lines - self.viewport_height as usize) as u16;
+        } else {
+            self.scroll = 0;
+        }
+        self.auto_scroll = true;
+    }
+
+    pub fn scroll_page_down(&mut self) {
+        let page_size = self.viewport_height.saturating_sub(2);
+        self.scroll = self.scroll.saturating_add(page_size);
+        self.auto_scroll = false;
+    }
+
+    pub fn scroll_page_up(&mut self) {
+        let page_size = self.viewport_height.saturating_sub(2);
+        self.scroll = self.scroll.saturating_sub(page_size);
+        self.auto_scroll = false;
+    }
+
+    pub fn update_viewport(&mut self, height: u16, total_lines: usize) {
+        self.viewport_height = height;
+        self.total_lines = total_lines;
+
+        // Auto-scroll if enabled and new content arrived
+        if self.auto_scroll {
+            self.scroll_to_bottom();
+        }
     }
 
     pub fn toggle_backend_selection(&mut self) {
@@ -283,26 +363,44 @@ impl App {
     
     pub fn save_current_session(&mut self) {
         if self.messages.len() <= 1 { return; }
-        
+
         let name = self.messages.iter()
             .find(|m| matches!(m.role, Role::User))
             .map(|m| m.content.lines().next().unwrap_or("New Chat").chars().take(50).collect::<String>())
             .unwrap_or_else(|| "New Chat".to_string());
 
+        let now = chrono::Utc::now();
+
         if let Some(id) = &self.current_session_id {
             if let Some(idx) = self.history.iter().position(|s| &s.id == id) {
                 self.history[idx].messages = self.messages.clone();
                 self.history[idx].name = name;
+                self.history[idx].updated_at = now;
+
+                // Save individual chat file
+                if let Err(e) = storage::save_chat(&self.history[idx]) {
+                    eprintln!("Failed to save chat: {}", e);
+                }
             } else {
                 let new_id = chrono::Utc::now().to_rfc3339();
                 self.current_session_id = Some(new_id.clone());
                 let session = ChatSession {
                     id: new_id,
                     name,
-                    created_at: chrono::Utc::now(),
+                    created_at: now,
+                    updated_at: now,
                     messages: self.messages.clone(),
+                    file_path: None,
                 };
-                self.history.insert(0, session);
+
+                // Save chat file and get path
+                if let Ok(path) = storage::save_chat(&session) {
+                    let mut saved_session = session;
+                    saved_session.file_path = Some(path);
+                    self.history.insert(0, saved_session);
+                } else {
+                    eprintln!("Failed to save new chat");
+                }
             }
         } else {
             let new_id = chrono::Utc::now().to_rfc3339();
@@ -310,14 +408,20 @@ impl App {
             let session = ChatSession {
                 id: new_id,
                 name,
-                created_at: chrono::Utc::now(),
+                created_at: now,
+                updated_at: now,
                 messages: self.messages.clone(),
+                file_path: None,
             };
-            self.history.insert(0, session);
-        }
-        
-        if let Err(e) = storage::save_chats(&self.history) {
-            eprintln!("Failed to save history: {}", e);
+
+            // Save chat file and get path
+            if let Ok(path) = storage::save_chat(&session) {
+                let mut saved_session = session;
+                saved_session.file_path = Some(path);
+                self.history.insert(0, saved_session);
+            } else {
+                eprintln!("Failed to save new chat");
+            }
         }
     }
 
@@ -345,6 +449,66 @@ impl App {
     pub fn history_down(&mut self) {
         if self.selected_chat_index < self.history.len().saturating_sub(1) {
             self.selected_chat_index += 1;
+        }
+    }
+
+    pub fn new_chat(&mut self) {
+        // Save current session before starting new
+        self.save_current_session();
+
+        // Reset to fresh chat
+        self.messages = vec![Message {
+            role: Role::System,
+            content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
+        }];
+        self.current_session_id = None;
+        self.user_msg_count = 0;
+        self.assistant_msg_count = 0;
+        self.session_start = std::time::Instant::now();
+        self.show_history = false;
+
+        // Reload history to get fresh list
+        self.history = storage::load_chats().unwrap_or_default();
+        self.selected_chat_index = 0;
+    }
+
+    pub fn delete_selected_chat(&mut self) {
+        if self.history.is_empty() || self.selected_chat_index >= self.history.len() {
+            return;
+        }
+
+        let session_to_delete = &self.history[self.selected_chat_index];
+
+        // Don't allow deleting the currently active session
+        if let Some(current_id) = &self.current_session_id {
+            if &session_to_delete.id == current_id {
+                self.messages.push(Message {
+                    role: Role::System,
+                    content: "Cannot delete the currently active chat. Switch to another chat first.".to_string(),
+                });
+                return;
+            }
+        }
+
+        // Delete the file
+        if let Err(e) = storage::delete_chat(session_to_delete) {
+            eprintln!("Failed to delete chat: {}", e);
+            return;
+        }
+
+        // Remove from history
+        self.history.remove(self.selected_chat_index);
+
+        // Adjust selection
+        if self.selected_chat_index >= self.history.len() && self.selected_chat_index > 0 {
+            self.selected_chat_index -= 1;
+        }
+    }
+
+    pub fn reload_history(&mut self) {
+        self.history = storage::load_chats().unwrap_or_default();
+        if self.selected_chat_index >= self.history.len() {
+            self.selected_chat_index = self.history.len().saturating_sub(1);
         }
     }
 }

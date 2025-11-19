@@ -19,7 +19,7 @@ const PURPLE: Color = Color::Rgb(214, 153, 182); // #d699b6
 const AQUA: Color = Color::Rgb(131, 192, 146);   // #83c092
 const GRAY: Color = Color::Rgb(133, 146, 137);   // #859289
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -75,7 +75,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_messages(f: &mut Frame, app: &App, area: Rect) {
+fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
     let mut text_lines = Vec::new();
     
     for m in &app.messages {
@@ -210,7 +210,7 @@ fn draw_shortcuts(f: &mut Frame) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(11), // Height of the shortcuts menu
+            Constraint::Length(12), // Height of the shortcuts menu
         ])
         .split(f.area())[1];
 
@@ -234,12 +234,16 @@ fn draw_shortcuts(f: &mut Frame) {
             Cell::from("Enter Input Mode"),
         ]),
         Row::new(vec![
+            Cell::from(Span::styled("n", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("New Chat"),
+        ]),
+        Row::new(vec![
             Cell::from(Span::styled("s", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
             Cell::from("Toggle Stats"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("c", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
-            Cell::from("Clear History"),
+            Cell::from("Clear Current Chat"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("q", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
@@ -395,8 +399,16 @@ fn draw_history_panel(f: &mut Frame, app: &App) {
         ])
         .split(f.area())[0];
 
+    // Create title with keybindings hint
+    let title = Line::from(vec![
+        Span::styled(" Chat History ", Style::default().fg(PURPLE).add_modifier(Modifier::BOLD)),
+        Span::styled("(n)ew ", Style::default().fg(GRAY)),
+        Span::styled("(d)elete ", Style::default().fg(GRAY)),
+        Span::styled("(r)efresh ", Style::default().fg(GRAY)),
+    ]);
+
     let block = Block::default()
-        .title(" Chat History (Space+e to close) ")
+        .title(title)
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(Style::default().fg(PURPLE))
@@ -457,8 +469,15 @@ fn draw_history_panel(f: &mut Frame, app: &App) {
         }
     }
 
+    // Add footer with directory path
+    let chats_dir = crate::storage::get_chats_dir();
+    let footer_text = format!(" {} ", chats_dir.display());
+    let block_with_footer = block.title_bottom(
+        Line::from(Span::styled(footer_text, Style::default().fg(GRAY)))
+    );
+
     let paragraph = Paragraph::new(items)
-        .block(block)
+        .block(block_with_footer)
         .alignment(ratatui::layout::Alignment::Left)
         .wrap(Wrap { trim: false });
 
