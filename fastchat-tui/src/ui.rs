@@ -56,6 +56,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_history {
         draw_history_panel(f, app);
     }
+
+    if app.show_leader_menu {
+        draw_leader_menu(f);
+    }
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
@@ -280,11 +284,11 @@ fn draw_shortcuts(f: &mut Frame) {
     let rows = vec![
         Row::new(vec![
             Cell::from(Span::styled("Space", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
-            Cell::from("Toggle this menu"),
+            Cell::from("Leader Menu (organized shortcuts)"),
         ]),
         Row::new(vec![
-            Cell::from(Span::styled("Space+e", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
-            Cell::from("Toggle Chat History"),
+            Cell::from(Span::styled("?", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Toggle this shortcuts menu"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("i", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
@@ -549,6 +553,67 @@ fn draw_history_panel(f: &mut Frame, app: &App) {
         .block(block_with_footer)
         .alignment(ratatui::layout::Alignment::Left)
         .wrap(Wrap { trim: false });
+
+    f.render_widget(ratatui::widgets::Clear, area);
+    f.render_widget(paragraph, area);
+}
+
+fn draw_leader_menu(f: &mut Frame) {
+    // LazyVim which-key style popup at the bottom
+    let area = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(14), // Height for leader menu
+        ])
+        .split(f.area())[1];
+
+    let block = Block::default()
+        .title(" Leader Key - Space ")
+        .borders(Borders::ALL)
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .border_style(Style::default().fg(YELLOW))
+        .style(Style::default().bg(BG_MEDIUM).fg(FG));
+
+    // Organized categories - LazyVim style
+    let menu_items = vec![
+        Line::from(vec![
+            Span::styled(" Explore ", Style::default().fg(BLUE).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("  e", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Explorer (Chat History)", Style::default().fg(FG)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Chat ", Style::default().fg(GREEN).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("  c", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Clear Current Chat", Style::default().fg(FG)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled(" Session ", Style::default().fg(PURPLE).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![
+            Span::styled("  s", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Show Stats", Style::default().fg(FG)),
+        ]),
+        Line::from(vec![
+            Span::styled("  b", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Backend Selection", Style::default().fg(FG)),
+        ]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  ?", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Show All Shortcuts", Style::default().fg(FG)),
+        ]),
+    ];
+
+    let paragraph = Paragraph::new(menu_items)
+        .block(block)
+        .alignment(ratatui::layout::Alignment::Left);
 
     f.render_widget(ratatui::widgets::Clear, area);
     f.render_widget(paragraph, area);

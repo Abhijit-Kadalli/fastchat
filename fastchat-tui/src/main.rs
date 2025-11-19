@@ -126,6 +126,33 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Esc | KeyCode::Char('s') => app.toggle_stats(),
                         _ => {}
                     }
+                } else if app.show_leader_menu {
+                    match key.code {
+                        KeyCode::Esc => app.toggle_leader_menu(),
+                        KeyCode::Char('e') => {
+                            app.toggle_leader_menu();
+                            app.toggle_history();
+                        }
+                        KeyCode::Char('c') => {
+                            app.toggle_leader_menu();
+                            app.clear_history();
+                        }
+                        KeyCode::Char('s') => {
+                            app.toggle_leader_menu();
+                            app.toggle_stats();
+                        }
+                        KeyCode::Char('b') => {
+                            app.toggle_leader_menu();
+                            app.toggle_backend_selection();
+                        }
+                        KeyCode::Char('?') => {
+                            app.toggle_leader_menu();
+                            app.toggle_shortcuts();
+                        }
+                        _ => {
+                            app.toggle_leader_menu();
+                        }
+                    }
                 } else if app.show_history {
                     match key.code {
                         KeyCode::Esc => app.toggle_history(),
@@ -167,20 +194,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         }
                         KeyCode::Char('n') => app.new_chat(),
                         KeyCode::Char(' ') if key.modifiers.is_empty() => {
-                            if app.pending_leader_key {
-                                app.pending_leader_key = false;
-                                app.toggle_shortcuts();
-                            } else {
-                                app.pending_leader_key = true;
-                            }
+                            app.toggle_leader_menu();
                         }
-                        KeyCode::Char('e') if app.pending_leader_key => {
-                            app.pending_leader_key = false;
-                            app.toggle_history();
-                        }
-                        KeyCode::Char('s') => app.toggle_stats(),
-                        KeyCode::Char('c') => app.clear_history(),
-                        KeyCode::Char('b') => app.toggle_backend_selection(),
+                        KeyCode::Char('?') => app.toggle_shortcuts(),
                         KeyCode::Char('g') if key.modifiers.is_empty() => {
                             app.pending_leader_key = true;
                         }

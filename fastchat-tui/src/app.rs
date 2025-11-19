@@ -36,6 +36,7 @@ pub struct App {
     pub tx: mpsc::Sender<ApiEvent>,
     pub current_task: Option<tokio::task::JoinHandle<()>>,
     pub pending_leader_key: bool,
+    pub show_leader_menu: bool,
     pub command_input: String,
     pub show_line_numbers: bool,
     pub auto_scroll: bool,
@@ -81,6 +82,7 @@ impl App {
             tx,
             current_task: None,
             pending_leader_key: false,
+            show_leader_menu: false,
             command_input: String::new(),
             show_line_numbers: true,
             auto_scroll: true,
@@ -91,6 +93,15 @@ impl App {
 
     pub fn toggle_shortcuts(&mut self) {
         self.show_shortcuts = !self.show_shortcuts;
+    }
+
+    pub fn toggle_leader_menu(&mut self) {
+        self.show_leader_menu = !self.show_leader_menu;
+        if self.show_leader_menu {
+            self.pending_leader_key = true;
+        } else {
+            self.pending_leader_key = false;
+        }
     }
 
     pub fn toggle_stats(&mut self) {
