@@ -245,10 +245,4 @@ pub fn delete_chat(session: &ChatSession) -> Result<()> {
     Ok(())
 }
 
-/// Save multiple chats (for backward compatibility, but now saves individually)
-pub fn save_chats(chats: &[ChatSession]) -> Result<()> {
-    for chat in chats {
-        save_chat(chat)?;
-    }
-    Ok(())
-}
+
