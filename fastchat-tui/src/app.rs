@@ -2,7 +2,9 @@ use crate::config::AppConfig;
 use crate::api::{send_message_stream, ApiEvent};
 use crate::types::{Message, Role, ChatSession};
 use crate::storage;
+use crate::rag::RagSystem;
 use tokio::sync::mpsc;
+use std::path::PathBuf;
 
 pub enum InputMode {
     Normal,
@@ -42,14 +44,34 @@ pub struct App {
     pub auto_scroll: bool,
     pub total_lines: usize,
     pub viewport_height: u16,
+    
+    // RAG related fields
+    pub rag_system: Option<RagSystem>,
+    pub rag_enabled: bool,
+    pub show_documents: bool,
+    pub document_input: String,
+    pub show_document_input: bool,
 }
 
 impl App {
     pub fn new() -> App {
         let (tx, rx) = mpsc::channel(100);
         let history = storage::load_chats().unwrap_or_default();
+        let config = AppConfig::default();
+        
+        // Initialize RAG system with active backend URL
+        let base_url = config.get_active_backend().map(|b| b.url.clone()).unwrap_or_default();
+        
+        let rag_system = match RagSystem::new(base_url) {
+            Ok(rag) => Some(rag),
+            Err(e) => {
+                eprintln!("Failed to initialize RAG system: {}", e);
+                None
+            }
+        };
+
         App {
-            config: AppConfig::default(),
+            config,
             messages: vec![Message {
                 role: Role::System,
                 content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
@@ -88,6 +110,11 @@ impl App {
             auto_scroll: true,
             total_lines: 0,
             viewport_height: 0,
+            rag_system,
+            rag_enabled: false,
+            show_documents: false,
+            document_input: String::new(),
+            show_document_input: false,
         }
     }
 
@@ -102,6 +129,26 @@ impl App {
         } else {
             self.pending_leader_key = false;
         }
+    }
+    
+    pub fn toggle_rag(&mut self) {
+        if self.rag_system.is_some() {
+            self.rag_enabled = !self.rag_enabled;
+            let status = if self.rag_enabled { "enabled" } else { "disabled" };
+            self.messages.push(Message {
+                role: Role::System,
+                content: format!("RAG {}", status),
+            });
+        } else {
+             self.messages.push(Message {
+                role: Role::System,
+                content: "RAG system not available.".to_string(),
+            });
+        }
+    }
+    
+    pub fn toggle_documents(&mut self) {
+        self.show_documents = !self.show_documents;
     }
 
     pub fn toggle_stats(&mut self) {
@@ -173,8 +220,50 @@ impl App {
             return;
         }
 
-        let content = self.input.clone();
+        let mut content = self.input.clone();
         self.input.clear();
+        
+        // RAG Retrieval
+        if self.rag_enabled {
+            if let Some(rag) = &self.rag_system {
+                self.messages.push(Message {
+                    role: Role::System,
+                    content: "Searching documents...".to_string(),
+                });
+                
+                // Update base URL in case it changed
+                let mut rag_clone = rag.clone();
+                if let Some(backend) = self.config.get_active_backend() {
+                    rag_clone.set_base_url(backend.url.clone());
+                }
+
+                match rag_clone.search(&content, 3).await {
+                    Ok(results) => {
+                        if !results.is_empty() {
+                            let mut context_str = String::from("\n\nContext:\n");
+                            for (chunk, score) in results {
+                                context_str.push_str(&format!("- [{}] (Score: {:.2}): {}\n", chunk.source, score, chunk.text));
+                            }
+                            context_str.push_str("\n\nPlease answer the user's question based on the context above. Cite your sources using [Source: filename].\n");
+                            
+                            content.push_str(&context_str);
+                        } else {
+                             self.messages.push(Message {
+                                role: Role::System,
+                                content: "No relevant documents found.".to_string(),
+                            });
+                        }
+                    },
+                    Err(e) => {
+                        self.messages.push(Message {
+                            role: Role::System,
+                            content: format!("RAG Search Error: {}", e),
+                        });
+                    }
+                }
+            }
+        }
+        
         self.messages.push(Message {
             role: Role::User,
             content: content.clone(),
@@ -191,11 +280,10 @@ impl App {
         self.is_processing = true;
         let tx = self.tx.clone();
         let config = self.config.clone();
-        let history = self.messages.clone(); // Simplified: sending whole history including the new user msg and empty assistant msg
+        let history = self.messages.clone(); 
 
         let handle = tokio::spawn(async move {
             if let Err(e) = send_message_stream(config, history, tx).await {
-                // Handle error (maybe send an error event)
                 eprintln!("Error sending message: {}", e);
             }
         });
@@ -351,6 +439,11 @@ impl App {
             backend_config.url = new_url.clone();
         }
         self.config.active_backend = selected_backend.clone();
+        
+        // Update RAG base URL
+        if let Some(rag) = &mut self.rag_system {
+            rag.set_base_url(new_url.clone());
+        }
 
         self.show_url_edit = false;
         self.messages.push(Message {
@@ -521,5 +614,47 @@ impl App {
         if self.selected_chat_index >= self.history.len() {
             self.selected_chat_index = self.history.len().saturating_sub(1);
         }
+    }
+    
+    // Document management methods
+    pub fn add_document(&mut self, path: &str) {
+        if let Some(rag) = &self.rag_system {
+            let path_buf = PathBuf::from(path);
+            let rag_clone = rag.clone();
+            let tx = self.tx.clone();
+            let path_str = path.to_string();
+            
+            // Spawn async task for indexing
+            tokio::spawn(async move {
+                if path_buf.exists() {
+                    if let Err(e) = rag_clone.index_file(&path_buf).await {
+                        let _ = tx.send(ApiEvent::Error(format!("Failed to index document: {}", e))).await;
+                    } else {
+                        // We can't easily send a success message via ApiEvent::Error, but we can abuse it or add a new event type.
+                        // For now, let's just print to stderr or ignore.
+                        // Or better, send a system message via a new event type?
+                        // Let's just use Error for now to show it in the chat as a system message (hacky but works)
+                        let _ = tx.send(ApiEvent::Error(format!("Document indexed: {}", path_str))).await;
+                    }
+                } else {
+                    let _ = tx.send(ApiEvent::Error(format!("File not found: {}", path_str))).await;
+                }
+            });
+        }
+        self.show_document_input = false;
+        self.document_input.clear();
+    }
+    
+    pub fn enter_document_char(&mut self, c: char) {
+        self.document_input.push(c);
+    }
+    
+    pub fn delete_document_char(&mut self) {
+        self.document_input.pop();
+    }
+    
+    pub fn cancel_document_input(&mut self) {
+        self.show_document_input = false;
+        self.document_input.clear();
     }
 }

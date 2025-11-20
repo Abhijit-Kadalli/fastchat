@@ -16,6 +16,7 @@ mod config;
 mod api;
 mod storage;
 mod types;
+mod rag;
 
 use app::App;
 
@@ -68,6 +69,17 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Esc | KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
                             app.stop_generation();
                         }
+                        _ => {}
+                    }
+                } else if app.show_document_input {
+                    match key.code {
+                        KeyCode::Esc => app.cancel_document_input(),
+                        KeyCode::Enter => {
+                            let path = app.document_input.clone();
+                            app.add_document(&path);
+                        }
+                        KeyCode::Char(c) => app.enter_document_char(c),
+                        KeyCode::Backspace => app.delete_document_char(),
                         _ => {}
                     }
                 } else if app.is_input_mode() {
@@ -126,12 +138,28 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Esc | KeyCode::Char('s') => app.toggle_stats(),
                         _ => {}
                     }
+                } else if app.show_documents {
+                    match key.code {
+                        KeyCode::Esc => app.toggle_documents(),
+                        KeyCode::Char('a') => {
+                            app.show_document_input = true;
+                        }
+                        KeyCode::Char(' ') if key.modifiers.is_empty() => {
+                            // Allow leader key in documents view too
+                            app.toggle_leader_menu();
+                        }
+                        _ => {}
+                    }
                 } else if app.show_leader_menu {
                     match key.code {
                         KeyCode::Esc => app.toggle_leader_menu(),
                         KeyCode::Char('e') => {
                             app.toggle_leader_menu();
                             app.toggle_history();
+                        }
+                        KeyCode::Char('d') => {
+                            app.toggle_leader_menu();
+                            app.toggle_documents();
                         }
                         KeyCode::Char('c') => {
                             app.toggle_leader_menu();
@@ -145,6 +173,10 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                             app.toggle_leader_menu();
                             app.toggle_backend_selection();
                         }
+                        KeyCode::Char('r') => {
+                            app.toggle_leader_menu();
+                            app.toggle_rag();
+                        }
                         KeyCode::Char('?') => {
                             app.toggle_leader_menu();
                             app.toggle_shortcuts();
@@ -157,15 +189,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                     match key.code {
                         KeyCode::Esc => app.toggle_history(),
                         KeyCode::Char(' ') if key.modifiers.is_empty() => {
-                            if app.pending_leader_key {
-                                app.pending_leader_key = false;
-                            } else {
-                                app.pending_leader_key = true;
-                            }
-                        }
-                        KeyCode::Char('e') if app.pending_leader_key => {
-                            app.pending_leader_key = false;
-                            app.toggle_history();
+                            app.toggle_leader_menu();
                         }
                         KeyCode::Char('j') | KeyCode::Down => app.history_down(),
                         KeyCode::Char('k') | KeyCode::Up => app.history_up(),
@@ -173,9 +197,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Char('n') => app.new_chat(),
                         KeyCode::Char('d') => app.delete_selected_chat(),
                         KeyCode::Char('r') => app.reload_history(),
-                        _ => {
-                            app.pending_leader_key = false;
-                        }
+                        _ => {}
                     }
                 } else {
                     match key.code {
