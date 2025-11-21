@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 pub enum ApiEvent {
     Token(String),
+    ThinkingToken(String),
     Done,
     Error(String),
 }
@@ -33,6 +34,7 @@ struct Choice {
 #[derive(Deserialize)]
 struct Delta {
     content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 pub async fn send_message_stream(
@@ -88,6 +90,11 @@ pub async fn send_message_stream(
                         
                         if let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) {
                             if let Some(choice) = chunk.choices.first() {
+                                // Handle thinking/reasoning content
+                                if let Some(reasoning) = &choice.delta.reasoning_content {
+                                    let _ = tx.send(ApiEvent::ThinkingToken(reasoning.clone())).await;
+                                }
+                                // Handle regular content
                                 if let Some(content) = &choice.delta.content {
                                     let _ = tx.send(ApiEvent::Token(content.clone())).await;
                                 }

@@ -2,9 +2,7 @@ use crate::config::AppConfig;
 use crate::api::{send_message_stream, ApiEvent};
 use crate::types::{Message, Role, ChatSession};
 use crate::storage;
-use crate::rag::RagSystem;
 use tokio::sync::mpsc;
-use std::path::PathBuf;
 
 pub enum InputMode {
     Normal,
@@ -45,12 +43,9 @@ pub struct App {
     pub total_lines: usize,
     pub viewport_height: u16,
     
-    // RAG related fields
-    pub rag_system: Option<RagSystem>,
-    pub rag_enabled: bool,
-    pub show_documents: bool,
-    pub document_input: String,
-    pub show_document_input: bool,
+    // Model selection fields
+    pub show_model_selection: bool,
+    pub model_input: String,
 }
 
 impl App {
@@ -58,23 +53,13 @@ impl App {
         let (tx, rx) = mpsc::channel(100);
         let history = storage::load_chats().unwrap_or_default();
         let config = AppConfig::default();
-        
-        // Initialize RAG system with active backend URL
-        let base_url = config.get_active_backend().map(|b| b.url.clone()).unwrap_or_default();
-        
-        let rag_system = match RagSystem::new(base_url) {
-            Ok(rag) => Some(rag),
-            Err(e) => {
-                eprintln!("Failed to initialize RAG system: {}", e);
-                None
-            }
-        };
 
         App {
             config,
             messages: vec![Message {
                 role: Role::System,
                 content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
+                thinking_content: None,
             }],
             input: String::new(),
             input_mode: InputMode::Normal,
@@ -93,6 +78,7 @@ impl App {
                 "sglang".to_string(),
                 "ollama".to_string(),
                 "vllm".to_string(),
+                "lmstudio".to_string(),
             ],
             backend_selection_index: 0,
             url_input: String::new(),
@@ -110,11 +96,8 @@ impl App {
             auto_scroll: true,
             total_lines: 0,
             viewport_height: 0,
-            rag_system,
-            rag_enabled: false,
-            show_documents: false,
-            document_input: String::new(),
-            show_document_input: false,
+            show_model_selection: false,
+            model_input: String::new(),
         }
     }
 
@@ -131,25 +114,7 @@ impl App {
         }
     }
     
-    pub fn toggle_rag(&mut self) {
-        if self.rag_system.is_some() {
-            self.rag_enabled = !self.rag_enabled;
-            let status = if self.rag_enabled { "enabled" } else { "disabled" };
-            self.messages.push(Message {
-                role: Role::System,
-                content: format!("RAG {}", status),
-            });
-        } else {
-             self.messages.push(Message {
-                role: Role::System,
-                content: "RAG system not available.".to_string(),
-            });
-        }
-    }
-    
-    pub fn toggle_documents(&mut self) {
-        self.show_documents = !self.show_documents;
-    }
+
 
     pub fn toggle_stats(&mut self) {
         self.show_stats = !self.show_stats;
@@ -183,6 +148,7 @@ impl App {
         self.messages.push(Message {
             role: Role::System,
             content: "Generation stopped by user.".to_string(),
+            thinking_content: None,
         });
     }
 
@@ -223,50 +189,10 @@ impl App {
         let mut content = self.input.clone();
         self.input.clear();
         
-        // RAG Retrieval
-        if self.rag_enabled {
-            if let Some(rag) = &self.rag_system {
-                self.messages.push(Message {
-                    role: Role::System,
-                    content: "Searching documents...".to_string(),
-                });
-                
-                // Update base URL in case it changed
-                let mut rag_clone = rag.clone();
-                if let Some(backend) = self.config.get_active_backend() {
-                    rag_clone.set_base_url(backend.url.clone());
-                }
-
-                match rag_clone.search(&content, 3).await {
-                    Ok(results) => {
-                        if !results.is_empty() {
-                            let mut context_str = String::from("\n\nContext:\n");
-                            for (chunk, score) in results {
-                                context_str.push_str(&format!("- [{}] (Score: {:.2}): {}\n", chunk.source, score, chunk.text));
-                            }
-                            context_str.push_str("\n\nPlease answer the user's question based on the context above. Cite your sources using [Source: filename].\n");
-                            
-                            content.push_str(&context_str);
-                        } else {
-                             self.messages.push(Message {
-                                role: Role::System,
-                                content: "No relevant documents found.".to_string(),
-                            });
-                        }
-                    },
-                    Err(e) => {
-                        self.messages.push(Message {
-                            role: Role::System,
-                            content: format!("RAG Search Error: {}", e),
-                        });
-                    }
-                }
-            }
-        }
-        
         self.messages.push(Message {
             role: Role::User,
             content: content.clone(),
+            thinking_content: None,
         });
         self.user_msg_count += 1;
 
@@ -274,6 +200,7 @@ impl App {
         self.messages.push(Message {
             role: Role::Assistant,
             content: String::new(),
+            thinking_content: None,
         });
         self.assistant_msg_count += 1;
 
@@ -301,6 +228,17 @@ impl App {
                         }
                     }
                 }
+                ApiEvent::ThinkingToken(token) => {
+                    if let Some(last_msg) = self.messages.last_mut() {
+                        if let Role::Assistant = last_msg.role {
+                            if let Some(ref mut thinking) = last_msg.thinking_content {
+                                thinking.push_str(&token);
+                            } else {
+                                last_msg.thinking_content = Some(token);
+                            }
+                        }
+                    }
+                }
                 ApiEvent::Done => {
                     self.is_processing = false;
                 }
@@ -308,6 +246,7 @@ impl App {
                     self.messages.push(Message {
                         role: Role::System,
                         content: format!("Error: {}", err),
+                        thinking_content: None,
                     });
                     self.is_processing = false;
                 }
@@ -439,16 +378,12 @@ impl App {
             backend_config.url = new_url.clone();
         }
         self.config.active_backend = selected_backend.clone();
-        
-        // Update RAG base URL
-        if let Some(rag) = &mut self.rag_system {
-            rag.set_base_url(new_url.clone());
-        }
 
         self.show_url_edit = false;
         self.messages.push(Message {
             role: Role::System,
             content: format!("Switched to backend: {} (URL: {})", selected_backend, new_url),
+            thinking_content: None,
         });
     }
 
@@ -564,6 +499,7 @@ impl App {
         self.messages = vec![Message {
             role: Role::System,
             content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
+            thinking_content: None,
         }];
         self.current_session_id = None;
         self.user_msg_count = 0;
@@ -589,6 +525,7 @@ impl App {
                 self.messages.push(Message {
                     role: Role::System,
                     content: "Cannot delete the currently active chat. Switch to another chat first.".to_string(),
+                    thinking_content: None,
                 });
                 return;
             }
@@ -616,45 +553,44 @@ impl App {
         }
     }
     
-    // Document management methods
-    pub fn add_document(&mut self, path: &str) {
-        if let Some(rag) = &self.rag_system {
-            let path_buf = PathBuf::from(path);
-            let rag_clone = rag.clone();
-            let tx = self.tx.clone();
-            let path_str = path.to_string();
-            
-            // Spawn async task for indexing
-            tokio::spawn(async move {
-                if path_buf.exists() {
-                    if let Err(e) = rag_clone.index_file(&path_buf).await {
-                        let _ = tx.send(ApiEvent::Error(format!("Failed to index document: {}", e))).await;
-                    } else {
-                        // We can't easily send a success message via ApiEvent::Error, but we can abuse it or add a new event type.
-                        // For now, let's just print to stderr or ignore.
-                        // Or better, send a system message via a new event type?
-                        // Let's just use Error for now to show it in the chat as a system message (hacky but works)
-                        let _ = tx.send(ApiEvent::Error(format!("Document indexed: {}", path_str))).await;
-                    }
-                } else {
-                    let _ = tx.send(ApiEvent::Error(format!("File not found: {}", path_str))).await;
-                }
-            });
+    
+    // Model selection methods
+    pub fn toggle_model_selection(&mut self) {
+        self.show_model_selection = !self.show_model_selection;
+        if self.show_model_selection {
+            // Pre-fill with current model
+            if let Some(backend) = self.config.get_active_backend() {
+                self.model_input = backend.model.clone();
+            }
         }
-        self.show_document_input = false;
-        self.document_input.clear();
     }
     
-    pub fn enter_document_char(&mut self, c: char) {
-        self.document_input.push(c);
+    pub fn enter_model_char(&mut self, c: char) {
+        self.model_input.push(c);
     }
     
-    pub fn delete_document_char(&mut self) {
-        self.document_input.pop();
+    pub fn delete_model_char(&mut self) {
+        self.model_input.pop();
     }
     
-    pub fn cancel_document_input(&mut self) {
-        self.show_document_input = false;
-        self.document_input.clear();
+    pub fn confirm_model_change(&mut self) {
+        let new_model = self.model_input.trim().to_string();
+        if !new_model.is_empty() {
+            if let Some(backend) = self.config.backends.get_mut(&self.config.active_backend) {
+                backend.model = new_model.clone();
+                self.messages.push(Message {
+                    role: Role::System,
+                    content: format!("Model changed to: {}", new_model),
+                    thinking_content: None,
+                });
+            }
+        }
+        self.show_model_selection = false;
+        self.model_input.clear();
+    }
+    
+    pub fn cancel_model_selection(&mut self) {
+        self.show_model_selection = false;
+        self.model_input.clear();
     }
 }

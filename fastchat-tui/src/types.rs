@@ -12,6 +12,8 @@ pub enum Role {
 pub struct Message {
     pub role: Role,
     pub content: String,
+    #[serde(default)]
+    pub thinking_content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

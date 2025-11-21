@@ -18,7 +18,7 @@ const BLUE: Color = Color::Rgb(127, 187, 179);   // #7fbbb3
 const PURPLE: Color = Color::Rgb(214, 153, 182); // #d699b6
 const AQUA: Color = Color::Rgb(131, 192, 146);   // #83c092
 const GRAY: Color = Color::Rgb(133, 146, 137);   // #859289
-const RED: Color = Color::Rgb(230, 126, 128);    // #e67e80
+
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -57,13 +57,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_history {
         draw_history_panel(f, app);
     }
-    
-    if app.show_documents {
-        draw_documents_panel(f, app);
-    }
-    
-    if app.show_document_input {
-        draw_document_input(f, app);
+
+    if app.show_model_selection {
+        draw_model_selection(f, app);
     }
 
     if app.show_leader_menu {
@@ -75,18 +71,13 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let backend_name = &app.config.active_backend;
     let model_name = app.config.get_active_backend().map(|b| b.model.as_str()).unwrap_or("Unknown");
     
-    let rag_status = if app.rag_enabled { "RAG: ON" } else { "RAG: OFF" };
-    let rag_color = if app.rag_enabled { GREEN } else { GRAY };
-
     // LazyVim style: minimal, colored blocks
     let title = Line::from(vec![
-        Span::styled("  FASTCHAT ", Style::default().fg(BG_HARD).bg(BLUE).add_modifier(Modifier::BOLD)),
-        Span::styled("", Style::default().fg(BLUE).bg(BG_MEDIUM)),
+        Span::styled("  FASTCHAT ", Style::default().fg(BG_HARD).bg(BLUE).add_modifier(Modifier::BOLD)),
+        Span::styled("", Style::default().fg(BLUE).bg(BG_MEDIUM)),
         Span::styled(format!(" {} ", backend_name.to_uppercase()), Style::default().fg(FG).bg(BG_MEDIUM)),
-        Span::styled("", Style::default().fg(BG_MEDIUM).bg(BG_HARD)),
-        Span::styled(format!(" {} ", model_name), Style::default().fg(GRAY).bg(BG_HARD)),
-        Span::styled(" │ ", Style::default().fg(GRAY).bg(BG_HARD)),
-        Span::styled(rag_status, Style::default().fg(rag_color).bg(BG_HARD).add_modifier(Modifier::BOLD)),
+        Span::styled("", Style::default().fg(BG_MEDIUM).bg(BG_HARD)),
+        Span::styled(format!(" {} ", model_name), Style::default().fg(GREEN).bg(BG_HARD).add_modifier(Modifier::BOLD)),
     ]);
 
     let paragraph = Paragraph::new(title);
@@ -114,6 +105,21 @@ fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
         ]);
 
         text_lines.push(header);
+        
+        // Render thinking content if present
+        if let Some(thinking) = &m.thinking_content {
+            if !thinking.is_empty() {
+                let thinking_lines = parse_markdown(thinking);
+                text_lines.push(Line::from(Span::styled("Thinking Process:", Style::default().fg(GRAY).add_modifier(Modifier::ITALIC))));
+                for line in thinking_lines {
+                    let mut spans = vec![Span::styled("│ ", Style::default().fg(GRAY))];
+                    spans.extend(line.spans);
+                    text_lines.push(Line::from(spans));
+                }
+                text_lines.push(Line::from("")); // Spacer
+            }
+        }
+
         text_lines.extend(parse_markdown(&m.content));
         text_lines.push(Line::from("")); // Spacer
     }
@@ -376,11 +382,6 @@ fn draw_stats(f: &mut Frame, app: &App) {
         Line::from(vec![Span::styled("Assistant Msgs:   ", Style::default().fg(GREEN)), Span::raw(app.assistant_msg_count.to_string())]),
         Line::from(""),
         Line::from(vec![Span::styled("Active Backend:   ", Style::default().fg(PURPLE)), Span::raw(app.config.active_backend.clone())]),
-        Line::from(""),
-        Line::from(vec![Span::styled("RAG Status:       ", Style::default().fg(AQUA)), 
-            if app.rag_enabled { Span::styled("Enabled", Style::default().fg(GREEN)) } else { Span::styled("Disabled", Style::default().fg(GRAY)) }]),
-        Line::from(vec![Span::styled("Documents Indexed:", Style::default().fg(AQUA)), 
-            if let Some(rag) = &app.rag_system { Span::raw(rag.get_document_count().to_string()) } else { Span::raw("N/A") }]),
     ];
     
     let paragraph = Paragraph::new(text)
@@ -569,69 +570,21 @@ fn draw_history_panel(f: &mut Frame, app: &App) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_documents_panel(f: &mut Frame, app: &App) {
-    // Right-side panel for documents
-    let area = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(70), // Main content
-            Constraint::Percentage(30), // Documents panel
-        ])
-        .split(f.area())[1];
-
-    let title = Line::from(vec![
-        Span::styled(" Documents ", Style::default().fg(AQUA).add_modifier(Modifier::BOLD)),
-        Span::styled("(a)dd ", Style::default().fg(GRAY)),
-    ]);
-
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(Style::default().fg(AQUA))
-        .style(Style::default().bg(BG_MEDIUM).fg(FG));
-
-    let mut items = Vec::new();
-    
-    if let Some(rag) = &app.rag_system {
-        let sources = rag.get_sources();
-        
-        if sources.is_empty() {
-            items.push(Line::from(Span::styled("No documents indexed.", Style::default().fg(GRAY))));
-        } else {
-            for source in sources {
-                items.push(Line::from(vec![
-                    Span::styled("📄 ", Style::default().fg(FG)),
-                    Span::styled(source, Style::default().fg(FG)),
-                ]));
-            }
-        }
-    } else {
-        items.push(Line::from(Span::styled("RAG System Unavailable", Style::default().fg(RED))));
-    }
-
-    let paragraph = Paragraph::new(items)
-        .block(block)
-        .alignment(ratatui::layout::Alignment::Left)
-        .wrap(Wrap { trim: false });
-
-    f.render_widget(ratatui::widgets::Clear, area);
-    f.render_widget(paragraph, area);
-}
-
-fn draw_document_input(f: &mut Frame, app: &App) {
+fn draw_model_selection(f: &mut Frame, app: &App) {
     let area = centered_rect(60, 20, f.area());
     let block = Block::default()
-        .title(" Add Document ")
+        .title(" Select Model ")
         .borders(Borders::ALL)
         .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(Style::default().fg(AQUA))
         .style(Style::default().bg(BG_MEDIUM).fg(FG));
     
     let text = vec![
-        Line::from(Span::styled("Enter file path:", Style::default().fg(GRAY))),
+        Line::from(Span::styled("Enter model name:", Style::default().fg(GRAY))),
         Line::from(""),
-        Line::from(Span::styled(&app.document_input, Style::default().fg(FG).bg(BG_HARD))),
+        Line::from(Span::styled(&app.model_input, Style::default().fg(FG).bg(BG_HARD))),
+        Line::from(""),
+        Line::from(Span::styled("Press Enter to confirm, Esc to cancel", Style::default().fg(GRAY).add_modifier(Modifier::ITALIC))),
     ];
     
     let paragraph = Paragraph::new(text)
@@ -645,7 +598,7 @@ fn draw_document_input(f: &mut Frame, app: &App) {
     let input_area = area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 1 });
     
     f.set_cursor_position((
-        input_area.x + app.document_input.len() as u16,
+        input_area.x + app.model_input.len() as u16,
         input_area.y + 2,
     ));
 }
@@ -677,20 +630,8 @@ fn draw_leader_menu(f: &mut Frame) {
             Span::styled("  Explorer (Chat History)", Style::default().fg(FG)),
         ]),
         Line::from(vec![
-            Span::styled("  d", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
-            Span::styled("  Documents (RAG)", Style::default().fg(FG)),
-        ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(" Chat ", Style::default().fg(GREEN).add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(vec![
-            Span::styled("  c", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
-            Span::styled("  Clear Current Chat", Style::default().fg(FG)),
-        ]),
-        Line::from(vec![
-            Span::styled("  r", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
-            Span::styled("  Toggle RAG", Style::default().fg(FG)),
+            Span::styled("  m", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+            Span::styled("  Model Selection", Style::default().fg(FG)),
         ]),
         Line::from(""),
         Line::from(vec![

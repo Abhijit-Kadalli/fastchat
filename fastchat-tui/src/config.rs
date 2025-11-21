@@ -36,6 +36,11 @@ impl Default for AppConfig {
             url: "http://localhost:8000/v1".to_string(),
             model: "default".to_string(),
         });
+        
+        backends.insert("lmstudio".to_string(), BackendConfig {
+            url: "http://localhost:1234/v1".to_string(),
+            model: "default".to_string(),
+        });
 
         Self {
             backends,

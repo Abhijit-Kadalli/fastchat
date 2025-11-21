@@ -16,7 +16,6 @@ mod config;
 mod api;
 mod storage;
 mod types;
-mod rag;
 
 use app::App;
 
@@ -71,15 +70,12 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         }
                         _ => {}
                     }
-                } else if app.show_document_input {
+                } else if app.show_model_selection {
                     match key.code {
-                        KeyCode::Esc => app.cancel_document_input(),
-                        KeyCode::Enter => {
-                            let path = app.document_input.clone();
-                            app.add_document(&path);
-                        }
-                        KeyCode::Char(c) => app.enter_document_char(c),
-                        KeyCode::Backspace => app.delete_document_char(),
+                        KeyCode::Esc => app.cancel_model_selection(),
+                        KeyCode::Enter => app.confirm_model_change(),
+                        KeyCode::Char(c) => app.enter_model_char(c),
+                        KeyCode::Backspace => app.delete_model_char(),
                         _ => {}
                     }
                 } else if app.is_input_mode() {
@@ -138,28 +134,12 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Esc | KeyCode::Char('s') => app.toggle_stats(),
                         _ => {}
                     }
-                } else if app.show_documents {
-                    match key.code {
-                        KeyCode::Esc => app.toggle_documents(),
-                        KeyCode::Char('a') => {
-                            app.show_document_input = true;
-                        }
-                        KeyCode::Char(' ') if key.modifiers.is_empty() => {
-                            // Allow leader key in documents view too
-                            app.toggle_leader_menu();
-                        }
-                        _ => {}
-                    }
                 } else if app.show_leader_menu {
                     match key.code {
                         KeyCode::Esc => app.toggle_leader_menu(),
                         KeyCode::Char('e') => {
                             app.toggle_leader_menu();
                             app.toggle_history();
-                        }
-                        KeyCode::Char('d') => {
-                            app.toggle_leader_menu();
-                            app.toggle_documents();
                         }
                         KeyCode::Char('c') => {
                             app.toggle_leader_menu();
@@ -173,9 +153,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                             app.toggle_leader_menu();
                             app.toggle_backend_selection();
                         }
-                        KeyCode::Char('r') => {
+                        KeyCode::Char('m') => {
                             app.toggle_leader_menu();
-                            app.toggle_rag();
+                            app.toggle_model_selection();
                         }
                         KeyCode::Char('?') => {
                             app.toggle_leader_menu();

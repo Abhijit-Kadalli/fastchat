@@ -126,6 +126,7 @@ fn markdown_to_session(content: &str, file_path: PathBuf) -> Result<ChatSession>
                     messages.push(Message {
                         role,
                         content: current_content.trim().to_string(),
+                        thinking_content: None,
                     });
                 }
                 current_content.clear();
@@ -154,6 +155,7 @@ fn markdown_to_session(content: &str, file_path: PathBuf) -> Result<ChatSession>
             messages.push(Message {
                 role,
                 content: current_content.trim().to_string(),
+                thinking_content: None,
             });
         }
     }
