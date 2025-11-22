@@ -126,9 +126,10 @@ fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Add line numbers if enabled
     let display_lines: Vec<Line> = if show_line_numbers {
-        let line_num_width = text_lines.len().to_string().len().max(3);
+        // Use fixed width of 4 for line numbers to ensure consistent spacing
+        // " 123 │ " -> 7 chars total
         text_lines.into_iter().enumerate().map(|(idx, line)| {
-            let line_num = format!("{:>width$} ", idx + 1, width = line_num_width);
+            let line_num = format!("{:>4} │ ", idx + 1);
             let mut spans = vec![Span::styled(line_num, Style::default().fg(GRAY))];
             spans.extend(line.spans);
             Line::from(spans)
