@@ -10,6 +10,13 @@ pub enum InputMode {
     Command,
 }
 
+#[derive(PartialEq)]
+pub enum ThinkingState {
+    None,
+    Thinking,
+    Done,
+}
+
 pub struct App {
     pub config: AppConfig,
     pub messages: Vec<Message>,
@@ -46,6 +53,9 @@ pub struct App {
     // Model selection fields
     pub show_model_selection: bool,
     pub model_input: String,
+    
+    // Thinking state
+    pub thinking_state: ThinkingState,
 }
 
 impl App {
@@ -97,7 +107,9 @@ impl App {
             total_lines: 0,
             viewport_height: 0,
             show_model_selection: false,
+
             model_input: String::new(),
+            thinking_state: ThinkingState::None,
         }
     }
 
@@ -216,6 +228,7 @@ impl App {
         });
         
         self.current_task = Some(handle);
+        self.thinking_state = ThinkingState::None;
     }
 
     pub async fn tick(&mut self) {
@@ -224,7 +237,38 @@ impl App {
                 ApiEvent::Token(token) => {
                     if let Some(last_msg) = self.messages.last_mut() {
                         if let Role::Assistant = last_msg.role {
-                            last_msg.content.push_str(&token);
+                            match self.thinking_state {
+                                ThinkingState::None => {
+                                    last_msg.content.push_str(&token);
+                                    if let Some(start_idx) = last_msg.content.find("<think>") {
+                                        self.thinking_state = ThinkingState::Thinking;
+                                        let thinking_part = last_msg.content[start_idx + 7..].to_string();
+                                        last_msg.content.truncate(start_idx);
+                                        
+                                        if let Some(ref mut thinking) = last_msg.thinking_content {
+                                            thinking.push_str(&thinking_part);
+                                        } else {
+                                            last_msg.thinking_content = Some(thinking_part);
+                                        }
+                                    }
+                                }
+                                ThinkingState::Thinking => {
+                                    if let Some(ref mut thinking) = last_msg.thinking_content {
+                                        thinking.push_str(&token);
+                                        if let Some(end_idx) = thinking.find("</think>") {
+                                            self.thinking_state = ThinkingState::Done;
+                                            let content_part = thinking[end_idx + 8..].to_string();
+                                            thinking.truncate(end_idx);
+                                            last_msg.content.push_str(&content_part);
+                                        }
+                                    } else {
+                                        last_msg.thinking_content = Some(token);
+                                    }
+                                }
+                                ThinkingState::Done => {
+                                    last_msg.content.push_str(&token);
+                                }
+                            }
                         }
                     }
                 }
