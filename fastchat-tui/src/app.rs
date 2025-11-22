@@ -199,7 +199,7 @@ impl App {
             return;
         }
 
-        let mut content = self.input.clone();
+        let content = self.input.clone();
         self.input.clear();
         
         self.messages.push(Message {

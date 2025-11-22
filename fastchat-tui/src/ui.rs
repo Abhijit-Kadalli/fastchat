@@ -129,7 +129,7 @@ fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
         // Use fixed width of 4 for line numbers to ensure consistent spacing
         // " 123 │ " -> 7 chars total
         text_lines.into_iter().enumerate().map(|(idx, line)| {
-            let line_num = format!("{:>4} │ ", idx + 1);
+            let line_num = format!("{:<4} │ ", idx + 1);
             let mut spans = vec![Span::styled(line_num, Style::default().fg(GRAY))];
             spans.extend(line.spans);
             Line::from(spans)
