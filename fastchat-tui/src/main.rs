@@ -74,8 +74,8 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                     match key.code {
                         KeyCode::Esc => app.cancel_model_selection(),
                         KeyCode::Enter => app.confirm_model_change(),
-                        KeyCode::Char(c) => app.enter_model_char(c),
-                        KeyCode::Backspace => app.delete_model_char(),
+                        KeyCode::Up | KeyCode::Char('k') => app.previous_model(),
+                        KeyCode::Down | KeyCode::Char('j') => app.next_model(),
                         _ => {}
                     }
                 } else if app.is_input_mode() {

@@ -44,7 +44,7 @@ impl Default for AppConfig {
 
         Self {
             backends,
-            active_backend: "tabbyapi".to_string(),
+            active_backend: "lmstudio".to_string(),
         }
     }
 }

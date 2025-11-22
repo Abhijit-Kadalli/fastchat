@@ -1,5 +1,5 @@
 use crate::config::AppConfig;
-use crate::api::{send_message_stream, ApiEvent};
+use crate::api::{send_message_stream, fetch_models, ApiEvent};
 use crate::types::{Message, Role, ChatSession};
 use crate::storage;
 use tokio::sync::mpsc;
@@ -52,7 +52,8 @@ pub struct App {
     
     // Model selection fields
     pub show_model_selection: bool,
-    pub model_input: String,
+    pub available_models: Vec<String>,
+    pub model_selection_index: usize,
     
     // Thinking state
     pub thinking_state: ThinkingState,
@@ -107,8 +108,8 @@ impl App {
             total_lines: 0,
             viewport_height: 0,
             show_model_selection: false,
-
-            model_input: String::new(),
+            available_models: Vec::new(),
+            model_selection_index: 0,
             thinking_state: ThinkingState::None,
         }
     }
@@ -293,6 +294,16 @@ impl App {
                         thinking_content: None,
                     });
                     self.is_processing = false;
+                }
+                ApiEvent::ModelsFetched(models) => {
+                    self.available_models = models;
+                    self.model_selection_index = 0;
+                    // If current model is in list, select it
+                    if let Some(backend) = self.config.get_active_backend() {
+                        if let Some(pos) = self.available_models.iter().position(|m| m == &backend.model) {
+                            self.model_selection_index = pos;
+                        }
+                    }
                 }
             }
         }
@@ -602,39 +613,53 @@ impl App {
     pub fn toggle_model_selection(&mut self) {
         self.show_model_selection = !self.show_model_selection;
         if self.show_model_selection {
-            // Pre-fill with current model
-            if let Some(backend) = self.config.get_active_backend() {
-                self.model_input = backend.model.clone();
-            }
+            self.available_models.clear();
+            self.model_selection_index = 0;
+            
+            // Fetch models
+            let tx = self.tx.clone();
+            let config = self.config.clone();
+            tokio::spawn(async move {
+                if let Err(e) = fetch_models(config, tx).await {
+                    eprintln!("Error fetching models: {}", e);
+                }
+            });
         }
     }
     
-    pub fn enter_model_char(&mut self, c: char) {
-        self.model_input.push(c);
-    }
-    
-    pub fn delete_model_char(&mut self) {
-        self.model_input.pop();
-    }
+
     
     pub fn confirm_model_change(&mut self) {
-        let new_model = self.model_input.trim().to_string();
-        if !new_model.is_empty() {
-            if let Some(backend) = self.config.backends.get_mut(&self.config.active_backend) {
-                backend.model = new_model.clone();
-                self.messages.push(Message {
-                    role: Role::System,
-                    content: format!("Model changed to: {}", new_model),
-                    thinking_content: None,
-                });
-            }
+        if self.available_models.is_empty() {
+             self.show_model_selection = false;
+             return;
+        }
+        
+        let new_model = self.available_models[self.model_selection_index].clone();
+        if let Some(backend) = self.config.backends.get_mut(&self.config.active_backend) {
+            backend.model = new_model.clone();
+            self.messages.push(Message {
+                role: Role::System,
+                content: format!("Model changed to: {}", new_model),
+                thinking_content: None,
+            });
         }
         self.show_model_selection = false;
-        self.model_input.clear();
+    }
+    
+    pub fn next_model(&mut self) {
+        if !self.available_models.is_empty() && self.model_selection_index < self.available_models.len() - 1 {
+            self.model_selection_index += 1;
+        }
+    }
+
+    pub fn previous_model(&mut self) {
+        if self.model_selection_index > 0 {
+            self.model_selection_index -= 1;
+        }
     }
     
     pub fn cancel_model_selection(&mut self) {
         self.show_model_selection = false;
-        self.model_input.clear();
     }
 }

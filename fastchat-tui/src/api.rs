@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 pub enum ApiEvent {
     Token(String),
     ThinkingToken(String),
+    ModelsFetched(Vec<String>),
     Done,
     Error(String),
 }
@@ -35,6 +36,16 @@ struct Choice {
 struct Delta {
     content: Option<String>,
     reasoning_content: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ModelListResponse {
+    data: Vec<ModelData>,
+}
+
+#[derive(Deserialize)]
+struct ModelData {
+    id: String,
 }
 
 pub async fn send_message_stream(
@@ -110,5 +121,30 @@ pub async fn send_message_stream(
     }
     
     let _ = tx.send(ApiEvent::Done).await;
+    Ok(())
+}
+
+pub async fn fetch_models(
+    config: AppConfig,
+    tx: mpsc::Sender<ApiEvent>,
+) -> Result<()> {
+    let backend = config.get_active_backend().ok_or_else(|| anyhow::anyhow!("No active backend"))?;
+    
+    let client = Client::new();
+    let url = format!("{}/models", backend.url.trim_end_matches('/'));
+    
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            if let Ok(list) = resp.json::<ModelListResponse>().await {
+                let models = list.data.into_iter().map(|m| m.id).collect();
+                let _ = tx.send(ApiEvent::ModelsFetched(models)).await;
+            } else {
+                 let _ = tx.send(ApiEvent::Error("Failed to parse models response".to_string())).await;
+            }
+        }
+        Err(e) => {
+             let _ = tx.send(ApiEvent::Error(format!("Failed to fetch models: {}", e))).await;
+        }
+    }
     Ok(())
 }

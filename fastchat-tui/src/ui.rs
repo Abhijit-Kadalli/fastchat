@@ -571,7 +571,7 @@ fn draw_history_panel(f: &mut Frame, app: &App) {
 }
 
 fn draw_model_selection(f: &mut Frame, app: &App) {
-    let area = centered_rect(60, 20, f.area());
+    let area = centered_rect(60, 40, f.area());
     let block = Block::default()
         .title(" Select Model ")
         .borders(Borders::ALL)
@@ -579,28 +579,44 @@ fn draw_model_selection(f: &mut Frame, app: &App) {
         .border_style(Style::default().fg(AQUA))
         .style(Style::default().bg(BG_MEDIUM).fg(FG));
     
-    let text = vec![
-        Line::from(Span::styled("Enter model name:", Style::default().fg(GRAY))),
-        Line::from(""),
-        Line::from(Span::styled(&app.model_input, Style::default().fg(FG).bg(BG_HARD))),
-        Line::from(""),
-        Line::from(Span::styled("Press Enter to confirm, Esc to cancel", Style::default().fg(GRAY).add_modifier(Modifier::ITALIC))),
-    ];
+    if app.available_models.is_empty() {
+        let text = Paragraph::new("Fetching models...")
+            .block(block)
+            .alignment(ratatui::layout::Alignment::Center);
+        f.render_widget(ratatui::widgets::Clear, area);
+        f.render_widget(text, area);
+        return;
+    }
+
+    let mut items = Vec::new();
+    for (i, model) in app.available_models.iter().enumerate() {
+        let style = if i == app.model_selection_index {
+            Style::default().fg(BG_HARD).bg(AQUA).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(FG)
+        };
+        
+        let prefix = if i == app.model_selection_index { "> " } else { "  " };
+        items.push(Line::from(vec![
+            Span::styled(format!("{}{}", prefix, model), style)
+        ]));
+    }
     
-    let paragraph = Paragraph::new(text)
+    // Calculate scroll to keep selection in view
+    let height = area.height as usize - 2; // borders
+    let scroll_offset = if app.model_selection_index >= height {
+        app.model_selection_index - height + 1
+    } else {
+        0
+    };
+
+    let paragraph = Paragraph::new(items)
         .block(block)
         .alignment(ratatui::layout::Alignment::Left)
-        .wrap(Wrap { trim: false });
+        .scroll((scroll_offset as u16, 0));
         
     f.render_widget(ratatui::widgets::Clear, area);
     f.render_widget(paragraph, area);
-    
-    let input_area = area.inner(ratatui::layout::Margin { vertical: 1, horizontal: 1 });
-    
-    f.set_cursor_position((
-        input_area.x + app.model_input.len() as u16,
-        input_area.y + 2,
-    ));
 }
 
 fn draw_leader_menu(f: &mut Frame) {
