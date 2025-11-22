@@ -71,6 +71,7 @@ impl App {
                 role: Role::System,
                 content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
                 thinking_content: None,
+                is_thinking_collapsed: false,
             }],
             input: String::new(),
             input_mode: InputMode::Normal,
@@ -162,7 +163,20 @@ impl App {
             role: Role::System,
             content: "Generation stopped by user.".to_string(),
             thinking_content: None,
+            is_thinking_collapsed: false,
         });
+    }
+
+    pub fn toggle_thinking(&mut self) {
+        // Toggle thinking for the last message that has thinking content
+        // Or ideally, we should be able to select a message. 
+        // For now, let's toggle the last assistant message's thinking state.
+        for msg in self.messages.iter_mut().rev() {
+            if msg.role == Role::Assistant && msg.thinking_content.is_some() {
+                msg.is_thinking_collapsed = !msg.is_thinking_collapsed;
+                return;
+            }
+        }
     }
 
     pub fn set_input_mode(&mut self) {
@@ -206,6 +220,7 @@ impl App {
             role: Role::User,
             content: content.clone(),
             thinking_content: None,
+            is_thinking_collapsed: false,
         });
         self.user_msg_count += 1;
 
@@ -214,6 +229,7 @@ impl App {
             role: Role::Assistant,
             content: String::new(),
             thinking_content: None,
+            is_thinking_collapsed: false,
         });
         self.assistant_msg_count += 1;
 
@@ -292,6 +308,7 @@ impl App {
                         role: Role::System,
                         content: format!("Error: {}", err),
                         thinking_content: None,
+                        is_thinking_collapsed: false,
                     });
                     self.is_processing = false;
                 }
@@ -439,6 +456,7 @@ impl App {
             role: Role::System,
             content: format!("Switched to backend: {} (URL: {})", selected_backend, new_url),
             thinking_content: None,
+            is_thinking_collapsed: false,
         });
     }
 
@@ -555,6 +573,7 @@ impl App {
             role: Role::System,
             content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
             thinking_content: None,
+            is_thinking_collapsed: false,
         }];
         self.current_session_id = None;
         self.user_msg_count = 0;
@@ -581,6 +600,7 @@ impl App {
                     role: Role::System,
                     content: "Cannot delete the currently active chat. Switch to another chat first.".to_string(),
                     thinking_content: None,
+                    is_thinking_collapsed: false,
                 });
                 return;
             }
@@ -642,6 +662,7 @@ impl App {
                 role: Role::System,
                 content: format!("Model changed to: {}", new_model),
                 thinking_content: None,
+                is_thinking_collapsed: false,
             });
         }
         self.show_model_selection = false;

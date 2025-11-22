@@ -127,6 +127,7 @@ fn markdown_to_session(content: &str, file_path: PathBuf) -> Result<ChatSession>
                         role,
                         content: current_content.trim().to_string(),
                         thinking_content: None,
+                        is_thinking_collapsed: false,
                     });
                 }
                 current_content.clear();
@@ -156,6 +157,7 @@ fn markdown_to_session(content: &str, file_path: PathBuf) -> Result<ChatSession>
                 role,
                 content: current_content.trim().to_string(),
                 thinking_content: None,
+                is_thinking_collapsed: false,
             });
         }
     }

@@ -202,6 +202,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                         KeyCode::Char('g') if key.modifiers.is_empty() => {
                             app.pending_leader_key = true;
                         }
+                        KeyCode::Char('t') => app.toggle_thinking(),
                         _ => {
                             if app.pending_leader_key {
                                 app.pending_leader_key = false;

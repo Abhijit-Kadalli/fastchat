@@ -109,18 +109,34 @@ fn draw_messages(f: &mut Frame, app: &mut App, area: Rect) {
         // Render thinking content if present
         if let Some(thinking) = &m.thinking_content {
             if !thinking.is_empty() {
-                let thinking_lines = parse_markdown(thinking);
-                text_lines.push(Line::from(Span::styled("Thinking Process:", Style::default().fg(GRAY).add_modifier(Modifier::ITALIC))));
-                for line in thinking_lines {
-                    let mut spans = vec![Span::styled("│ ", Style::default().fg(GRAY))];
-                    spans.extend(line.spans);
-                    text_lines.push(Line::from(spans));
+                let (icon, hint) = if m.is_thinking_collapsed {
+                    ("▶", "(collapsed - press 't' to expand)")
+                } else {
+                    ("▼", "(press 't' to collapse)")
+                };
+                
+                text_lines.push(Line::from(vec![
+                    Span::styled(format!("{} Thinking Process ", icon), Style::default().fg(GRAY).add_modifier(Modifier::ITALIC)),
+                    Span::styled(hint, Style::default().fg(BG_MEDIUM).add_modifier(Modifier::ITALIC)),
+                ]));
+
+                if !m.is_thinking_collapsed {
+                    let thinking_lines = parse_markdown(thinking);
+                    for line in thinking_lines {
+                        let mut spans = vec![Span::styled("│ ", Style::default().fg(GRAY))];
+                        spans.extend(line.spans);
+                        text_lines.push(Line::from(spans));
+                    }
                 }
                 text_lines.push(Line::from("")); // Spacer
             }
         }
 
         text_lines.extend(parse_markdown(&m.content));
+        
+        // Add a separator line between messages for better readability
+        text_lines.push(Line::from("")); 
+        text_lines.push(Line::from(Span::styled("──────────────────────────────────────────────────", Style::default().fg(BG_MEDIUM))));
         text_lines.push(Line::from("")); // Spacer
     }
 
@@ -338,6 +354,10 @@ fn draw_shortcuts(f: &mut Frame) {
         Row::new(vec![
             Cell::from(Span::styled("c", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
             Cell::from("Clear Current Chat"),
+        ]),
+        Row::new(vec![
+            Cell::from(Span::styled("t", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),
+            Cell::from("Toggle Thinking"),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("b", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD))),

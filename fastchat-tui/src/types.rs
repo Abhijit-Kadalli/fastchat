@@ -14,6 +14,8 @@ pub struct Message {
     pub content: String,
     #[serde(default)]
     pub thinking_content: Option<String>,
+    #[serde(default)]
+    pub is_thinking_collapsed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
