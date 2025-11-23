@@ -30,6 +30,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(f.area());
 
+    // Splash screen
+    if app.show_splash {
+        draw_splash(f);
+        return;
+    }
+
     // Main background
     let main_block = Block::default().style(Style::default().bg(BG_HARD));
     f.render_widget(main_block, f.area());
@@ -65,6 +71,62 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_leader_menu {
         draw_leader_menu(f);
     }
+}
+
+fn draw_splash(f: &mut Frame) {
+    let area = f.area();
+    let block = Block::default().style(Style::default().bg(BG_HARD));
+    f.render_widget(block, area);
+
+    let splash_text = vec![
+        Line::from(Span::styled(
+            "███████╗ █████╗ ███████╗████████╗     ██████╗██╗  ██╗ █████╗ ████████╗",
+            Style::default().fg(BLUE).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "██╔════╝██╔══██╗██╔════╝╚══██╔══╝    ██╔════╝██║  ██║██╔══██╗╚══██╔══╝",
+            Style::default().fg(BLUE).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "█████╗  ███████║███████╗   ██║       ██║     ███████║███████║   ██║   ",
+            Style::default().fg(AQUA).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "██╔══╝  ██╔══██║╚════██║   ██║       ██║     ██╔══██║██╔══██║   ██║   ",
+            Style::default().fg(AQUA).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "██║     ██║  ██║███████║   ██║       ╚██████╗██║  ██║██║  ██║   ██║   ",
+            Style::default().fg(GREEN).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "╚═╝     ╚═╝  ╚═╝╚══════╝   ╚═╝        ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ",
+            Style::default().fg(GREEN).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Press any key to start...",
+            Style::default().fg(FG).add_modifier(Modifier::RAPID_BLINK),
+        )),
+    ];
+
+    let paragraph = Paragraph::new(splash_text)
+        .alignment(ratatui::layout::Alignment::Center)
+        .block(Block::default().borders(Borders::NONE));
+
+    // Center vertically
+    let height = 10; // Approximate height of the text
+    let vertical_center = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(height),
+            Constraint::Percentage(50),
+        ])
+        .split(area);
+
+    f.render_widget(paragraph, vertical_center[1]);
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {

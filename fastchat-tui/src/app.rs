@@ -57,6 +57,9 @@ pub struct App {
     
     // Thinking state
     pub thinking_state: ThinkingState,
+    
+    // Splash screen
+    pub show_splash: bool,
 }
 
 impl App {
@@ -112,6 +115,7 @@ impl App {
             available_models: Vec::new(),
             model_selection_index: 0,
             thinking_state: ThinkingState::None,
+            show_splash: true,
         }
     }
 

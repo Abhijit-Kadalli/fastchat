@@ -63,7 +63,9 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
 
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
-                if app.is_processing {
+                if app.show_splash {
+                    app.show_splash = false;
+                } else if app.is_processing {
                     match key.code {
                         KeyCode::Esc | KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
                             app.stop_generation();
