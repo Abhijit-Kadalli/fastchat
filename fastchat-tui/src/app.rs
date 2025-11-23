@@ -70,12 +70,7 @@ impl App {
 
         App {
             config,
-            messages: vec![Message {
-                role: Role::System,
-                content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
-                thinking_content: None,
-                is_thinking_collapsed: false,
-            }],
+            messages: Vec::new(),
             input: String::new(),
             input_mode: InputMode::Normal,
             scroll: 0,
@@ -573,12 +568,7 @@ impl App {
         self.save_current_session();
 
         // Reset to fresh chat
-        self.messages = vec![Message {
-            role: Role::System,
-            content: "Welcome to Fastchat TUI. Press 'Space' for shortcuts.".to_string(),
-            thinking_content: None,
-            is_thinking_collapsed: false,
-        }];
+        self.messages = Vec::new();
         self.current_session_id = None;
         self.user_msg_count = 0;
         self.assistant_msg_count = 0;

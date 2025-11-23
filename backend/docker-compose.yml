@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    container_name: fastchat_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Note: While LM Studio has a headless mode ('lms server start'), there is currently no official Docker image.
+  # This service uses LocalAI (OpenAI compatible) as a drop-in replacement to mimic LM Studio on port 1234.
+  # If you have LM Studio installed locally, you can run 'lms server start' on your host machine instead.
+  lmstudio:
+    profiles: ["lmstudio"]
+    image: localai/localai:latest-aio-gpu-nvidia-cuda-12
+    container_name: fastchat_lmstudio
+    ports:
+      - "1234:8080" 
+    environment:
+      - MODELS_PATH=/models
+      - DEBUG=true
+    volumes:
+      - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+

@@ -25,10 +25,34 @@ Built with **Rust**, **Ratatui**, and **Tokio**, the frontend is designed for sp
 ### Prerequisites
 - **Rust** (for the TUI): [Install Rust](https://www.rust-lang.org/tools/install)
 - **Python 3.10+** (for the Backend)
-- **NVIDIA GPU** (Recommended for TabbyAPI/ExLlama)
+- **Docker & Docker Compose** (Recommended for easy backend setup)
+- **NVIDIA GPU** (Recommended for TabbyAPI/ExLlama/LocalAI)
 
-### 1. Set up the Backend (LM Studio)
-I recommend installing LM studio or Ollama for backend gives you a great selection of models without a lot of headache.
+### 1. Set up the Backend
+You can choose between **Ollama** or **LM Studio** (via LocalAI) as your backend. We provide a Docker setup for ease of use.
+
+**Option A: Using Docker (Recommended)**
+The project includes a Makefile to easily spin up your preferred backend.
+
+```bash
+# Start Ollama backend (Port 11434)
+make ollama
+
+# Start LM Studio compatible backend (Port 1234)
+# Uses LocalAI as a drop-in replacement since there is no official LM Studio Docker image.
+make lmstudio
+
+# Stop all backends
+make stop
+```
+
+**Option B: Manual Setup (Native)**
+If you have **LM Studio** installed, you can use its headless mode directly:
+```bash
+# Enable the server in LM Studio or run:
+lms server start
+```
+The TUI will connect to it on `localhost:1234` by default.
 
 
 ### 2. Build the Frontend (FastChat TUI)
@@ -47,11 +71,18 @@ cargo build --release
 ### Step 1: Start the Backend
 Launch the API server to start serving your models.
 
+**Using Docker:**
 ```bash
+make ollama  # or make lmstudio
+```
+
+**Using Manual Setup (TabbyAPI example):**
+```bash
+git clone https://github.com/theroyallab/tabbyAPI.git
 cd tabbyAPI
 ./start.sh  # or start.bat on Windows
 ```
-*Ensure the API is running (default: http://localhost:5000).*
+*Ensure the API is running (default: http://localhost:5000 for TabbyAPI, 11434 for Ollama, 1234 for LM Studio).*
 
 ### Step 2: Launch the TUI
 Open a new terminal window and start the client.
