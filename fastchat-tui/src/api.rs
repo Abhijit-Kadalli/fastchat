@@ -80,12 +80,19 @@ pub async fn send_message_stream(
         "temperature": 0.7,
     });
 
-    let mut stream = client
+    let response = client
         .post(url)
         .json(&body)
         .send()
-        .await?
-        .bytes_stream();
+        .await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let _ = tx.send(ApiEvent::Error(format!("API Error: {}", error_text))).await;
+        return Ok(());
+    }
+
+    let mut stream = response.bytes_stream();
 
     while let Some(item) = stream.next().await {
         match item {
@@ -135,6 +142,10 @@ pub async fn fetch_models(
     
     match client.get(&url).send().await {
         Ok(resp) => {
+            if !resp.status().is_success() {
+                let _ = tx.send(ApiEvent::Error(format!("Failed to fetch models: Status {}", resp.status()))).await;
+                return Ok(());
+            }
             if let Ok(list) = resp.json::<ModelListResponse>().await {
                 let models = list.data.into_iter().map(|m| m.id).collect();
                 let _ = tx.send(ApiEvent::ModelsFetched(models)).await;

@@ -29,7 +29,7 @@ impl Default for AppConfig {
         
         backends.insert("ollama".to_string(), BackendConfig {
             url: "http://localhost:11434/v1".to_string(),
-            model: "qwen2.5:1.5b".to_string(),
+            model: "default".to_string(),
         });
         
         backends.insert("vllm".to_string(), BackendConfig {

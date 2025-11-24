@@ -1,10 +1,11 @@
-.PHONY: help ollama lmstudio stop
+.PHONY: help ollama lmstudio stop list-models
 
 help:
 	@echo "Available commands:"
-	@echo "  make ollama    - Start Ollama backend"
-	@echo "  make lmstudio  - Start LM Studio compatible backend (LocalAI)"
-	@echo "  make stop      - Stop all backends"
+	@echo "  make ollama      - Start Ollama backend"
+	@echo "  make lmstudio    - Start LM Studio compatible backend (LocalAI)"
+	@echo "  make stop        - Stop all backends"
+	@echo "  make list-models - List models installed in Ollama"
 
 ollama:
 	@echo "Starting Ollama..."
@@ -18,3 +19,6 @@ stop:
 	@echo "Stopping backends..."
 	@cd backend && docker compose down
 
+list-models:
+	@echo "Listing Ollama models..."
+	@docker exec fastchat_ollama ollama list
