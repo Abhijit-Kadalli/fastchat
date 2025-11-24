@@ -65,13 +65,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
             if let Event::Key(key) = event::read()? {
                 if app.show_splash {
                     app.show_splash = false;
-                } else if app.is_processing {
-                    match key.code {
-                        KeyCode::Esc | KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
-                            app.stop_generation();
-                        }
-                        _ => {}
-                    }
+
                 } else if app.show_model_selection {
                     match key.code {
                         KeyCode::Esc => app.cancel_model_selection(),
@@ -184,6 +178,20 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
                 } else {
                     match key.code {
                         KeyCode::Char('q') => return Ok(()),
+                        KeyCode::Char('c') if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) => {
+                            if app.is_processing {
+                                app.stop_generation();
+                            } else {
+                                return Ok(());
+                            }
+                        }
+                        KeyCode::Esc => {
+                            if app.is_processing {
+                                app.stop_generation();
+                            } else if app.pending_leader_key {
+                                app.pending_leader_key = false;
+                            }
+                        }
                         KeyCode::Char('i') => app.set_input_mode(),
                         KeyCode::Char(':') => app.set_command_mode(),
                         KeyCode::Char('j') => app.scroll_down(),

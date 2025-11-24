@@ -208,12 +208,16 @@ impl App {
     }
 
     pub async fn submit_message(&mut self) {
+        if self.is_processing {
+            return;
+        }
         if self.input.trim().is_empty() {
             return;
         }
 
         let content = self.input.clone();
         self.input.clear();
+        self.input_mode = InputMode::Normal;
         
         self.messages.push(Message {
             role: Role::User,
